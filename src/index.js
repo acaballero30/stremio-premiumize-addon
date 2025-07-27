@@ -14,7 +14,7 @@ const MANIFEST = {
     resources: [
         { name: "catalog", types: ["movie", "series"] },
         { name: "meta", types: ["movie", "series"], idPrefixes: ["premiumize-"] },
-        { name: "stream", types: ["movie", "series"], idPrefixes: ["premiumize-", "tt"] }
+        { name: "stream", types: ["movie", "series"], idPrefixes: ["premiumize-", "tmdb:", "tt"] }
     ],
     types: ["movie", "series"]
 };
@@ -63,7 +63,7 @@ async function folderList(id) {
     });
     const response = await fetch(url);
     const json = await response.json();
-    return json.content || [];
+    return json || [];
 }
 
 async function itemDetails(id) {
@@ -115,7 +115,7 @@ function getPosterUrl(id) {
 }
 
 async function getMetas(id) {
-    const contents = await folderList(id);
+    const contents = await folderList(id).content;
     const files = contents.filter(item => item.type === "file" && /\.(mp4|mkv|avi)$/i.test(item.name));
     const folders = contents.filter(item => item.type === "folder");
     if (files.length >= folders.length) {
@@ -154,7 +154,7 @@ async function collectSeries(contents) {
 }
 
 async function collectEpisodes(id) {
-    const contents = await folderList(id);
+    const contents = await folderList(id).content;
     return contents.filter(item => item.type === "file" && /S\d{2}E\d{2}/i.test(item.name) && /\.(mp4|mkv|avi)$/i.test(item.name));
 }
 
@@ -263,6 +263,29 @@ function createErrorStream(description) {
     };
 }
 
+async function createCatalogs() {
+    const rootFolder = await folderList(CONFIG.premiumizeFolderId);
+    if (!rootFolder || !rootFolder.content || rootFolder.content.length === 0) {
+        return [];
+    }
+    const folders = rootFolder.content.filter(item => item.type === "folder");
+    if (folders.length > 0) {
+        return folders.map(folder => ({
+            type: CONFIG.addonName,
+            id: `premiumize-${folder.id}`,
+            name: folder.name
+        }));
+    }
+    const files = rootFolder.content.filter(item => item.type === "file");
+    if (files.length > 0) {
+        return [{
+            type: CONFIG.addonName,
+            id: `premiumize-${rootFolder.folder_id}`,
+            name: rootFolder.name || "Videos"
+        }];
+    }
+}
+
 async function handleRequest(request) {
     try {
         const url = new URL(request.url);
@@ -273,12 +296,7 @@ async function handleRequest(request) {
 
         // Manifest
         if (url.pathname === "/manifest.json") {
-            const contents = await folderList(CONFIG.premiumizeFolderId);
-            MANIFEST.catalogs = contents.filter(item => item.type === "folder").map(item => ({
-                type: CONFIG.addonName,
-                id: `premiumize-${item.name.toLowerCase()}`,
-                name: item.name
-            }));
+            MANIFEST.catalogs = await createCatalogs();
             return createJsonResponse(MANIFEST);
         }
 
@@ -286,8 +304,8 @@ async function handleRequest(request) {
         const catalogMatch = REGEX_PATTERNS.Catalog.exec(url.pathname);
         if (catalogMatch) {
             const id = catalogMatch[1];
-            const contents = await folderList(CONFIG.premiumizeFolderId);
-            const catalog = contents.find(item => `premiumize-${item.name.toLowerCase()}` === id);
+            const contents = await folderList(CONFIG.premiumizeFolderId).content;
+            const catalog = contents.find(item => `premiumize-${item.id}` === id);
             if (catalog) {
                 const metas = await getMetas(catalog.id);
                 return createJsonResponse({ metas });
