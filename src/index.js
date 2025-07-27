@@ -40,18 +40,13 @@ const REGEX_PATTERNS = {
 };
 
 function formatSize(bytes) {
-    if (bytes === 0) return "0 B";
-    const k = 1000;
+    if (bytes === 0){
+        return "0B";
+    }
     const sizes = ["B", "KB", "MB", "GB", "TB"];
+    const k = 1000;
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + sizes[i];
-}
-
-function createJsonResponse(data, status = 200) {
-    return new Response(JSON.stringify(data, null, 4), {
-        headers: HEADERS,
-        status: status,
-    });
 }
 
 function replaceParams(url, params) {
@@ -61,23 +56,23 @@ function replaceParams(url, params) {
     return url;
 }
 
-async function folderList(folderId) {
+async function folderList(id) {
     const url = replaceParams(API_ENDPOINTS.PREMIUMIZE_FOLDER_LIST, {
         apiKey: CONFIG.premiumizeApiKey,
-        folderId: folderId || ""
+        folderId: id || ""
     });
-    const res = await fetch(url);
-    const json = await res.json();
+    const response = await fetch(url);
+    const json = await response.json();
     return json.content || [];
 }
 
-async function itemDetails(itemId) {
+async function itemDetails(id) {
     const url = replaceParams(API_ENDPOINTS.PREMIUMIZE_ITEM_DETAILS, {
         apiKey: CONFIG.premiumizeApiKey,
-        itemId: itemId
+        itemId: id
     });
-    const res = await fetch(url);
-    const json = await res.json();
+    const response = await fetch(url);
+    const json = await response.json();
     return json || {};
 }
 
@@ -86,8 +81,8 @@ async function folderSearch(query) {
         apiKey: CONFIG.premiumizeApiKey,
         query: query
     });
-    const res = await fetch(url);
-    const json = await res.json();
+    const response = await fetch(url);
+    const json = await response.json();
     if (json.status === "success" && json.content && json.content.length > 0) {
         return json.content[0];
     }
@@ -96,7 +91,6 @@ async function folderSearch(query) {
 
 function extractIdsFromName(name) {
     const match = name.match(/\[tt(\d+)-(\d+)\]/i);
-
     if (match) {
         return {
             imdb: `tt${match[1]}`,
@@ -110,21 +104,20 @@ function cleanName(name) {
     return name.replace(/\s*\[tt\d+-\d+\]$/, '').trim();
 }
 
-function getPosterUrlFromIds(ids) {
-    if (ids && ids.imdb) {
+function getPosterUrl(id) {
+    if (id && id.imdb) {
         return API_ENDPOINTS.RPDB_POSTER
             .replace("{api_key}", CONFIG.rpdbApiKey)
             .replace("{source}", "imdb")
-            .replace("{id}", ids.imdb);
+            .replace("{id}", id.imdb);
     }
     return null;
 }
 
-async function getCatalog(folderId) {
-    const contents = await folderList(folderId);
-    const files = contents.filter(f => f.type === "file" && /\.(mp4|mkv|avi)$/i.test(f.name));
-    const folders = contents.filter(f => f.type === "folder");
-
+async function getMetas(id) {
+    const contents = await folderList(id);
+    const files = contents.filter(item => item.type === "file" && /\.(mp4|mkv|avi)$/i.test(item.name));
+    const folders = contents.filter(item => item.type === "folder");
     if (files.length >= folders.length) {
         return collectMovies(contents);
     } else {
@@ -133,13 +126,13 @@ async function getCatalog(folderId) {
 }
 
 async function collectMovies(contents) {
-    return contents.filter(f => f.type === "file" && /\.(mp4|mkv|avi)$/i.test(f.name)).map(file => {
+    return contents.filter(item => item.type === "file" && /\.(mp4|mkv|avi)$/i.test(item.name)).map(file => {
         const ids = extractIdsFromName(file.name);
         return {
             id: ids.tmdb || `premiumize-${file.id}`,
             type: "movie",
             name: cleanName(file.name.replace(/\.(mp4|mkv|avi)$/i, "")),
-            poster: getPosterUrlFromIds(ids),
+            poster: getPosterUrl(ids),
             description: null
         };
     });
@@ -147,26 +140,25 @@ async function collectMovies(contents) {
 
 async function collectSeries(contents) {
     const series = [];
-
-    for (const show of contents.filter(f => f.type === "folder")) {
+    for (const show of contents.filter(item => item.type === "folder")) {
         const ids = extractIdsFromName(show.name);
         series.push({
             id: ids.tmdb || `premiumize-${show.id}`,
             type: "series",
             name: cleanName(show.name.replace(/\.(mp4|mkv|avi)$/i, "")),
-            poster: getPosterUrlFromIds(ids),
+            poster: getPosterUrl(ids),
             description: null
         });
     }
     return series;
 }
 
-async function collectEpisodes(folderId) {
-    const contents = await folderList(folderId);
-    return contents.filter(f => f.type === "file" && /S\d{2}E\d{2}/i.test(f.name) && /\.(mp4|mkv|avi)$/i.test(f.name));
+async function collectEpisodes(id) {
+    const contents = await folderList(id);
+    return contents.filter(item => item.type === "file" && /S\d{2}E\d{2}/i.test(item.name) && /\.(mp4|mkv|avi)$/i.test(item.name));
 }
 
-async function getMeta(type, id) {
+async function getMeta(id, type) {
     if (type === "movie") {
         const file = await itemDetails(id);
         return {
@@ -180,15 +172,14 @@ async function getMeta(type, id) {
     else if (type === "series") {
         const files = await collectEpisodes(id);
         const videosBySeason = {};
-
-        for (const f of files) {
-            const match = f.name.match(/S(\d{2})E(\d{2})/i);
+        for (const file of files) {
+            const match = file.name.match(/S(\d{2})E(\d{2})/i);
             if (match) {
                 const season = parseInt(match[1]);
                 const episode = parseInt(match[2]);
                 if (!videosBySeason[season]) videosBySeason[season] = [];
                 videosBySeason[season].push({
-                    id: `premiumize-${f.id}`,
+                    id: `premiumize-${file.id}`,
                     title: `S${season}:E${episode}`,
                     season,
                     episode,
@@ -197,12 +188,12 @@ async function getMeta(type, id) {
             }
         }
         const allEpisodes = Object.entries(videosBySeason).flatMap(([seasonNum, episodes]) =>
-            episodes.map(ep => ({
-                id: `${ep.id}`,
-                title: `S${ep.season}:E${ep.episode}`,
-                season: ep.season,
-                episode: ep.episode,
-                released: ep.released
+            episodes.map(episode => ({
+                id: `${episode.id}`,
+                title: `S${ep.season}:E${episode.episode}`,
+                season: episode.season,
+                episode: episode.episode,
+                released: episode.released
             }))
         );
         return {
@@ -224,10 +215,9 @@ async function getMeta(type, id) {
     }
 }
 
-async function getStream(id) {
+async function getStreams(id) {
     let details = null;
     id = decodeURIComponent(id);
-
     if (id.startsWith("premiumize-")) {
         const fileId = id.split("premiumize-")[1];
         details = await itemDetails(fileId);
@@ -248,16 +238,21 @@ async function getStream(id) {
     if (!details) {
         return [createErrorStream("[NOT FOUND]")];
     }
-
     const extMatch = details.name && details.name.match(/\.(\w+)$/i);
     const ext = extMatch ? extMatch[1].toUpperCase() : "";
     const sizeStr = details.size ? formatSize(details.size) : "";
-
     return [{
         name: MANIFEST.name,
         title: `▶️ PLAY [${ext}|${sizeStr}]`,
         url: details.stream_link || details.link || details.directlink,
     }];
+}
+
+function createJsonResponse(data, status = 200) {
+    return new Response(JSON.stringify(data, null, 4), {
+        headers: HEADERS,
+        status: status,
+    });
 }
 
 function createErrorStream(description) {
@@ -278,25 +273,23 @@ async function handleRequest(request) {
 
         // Manifest
         if (url.pathname === "/manifest.json") {
-            const rootFolder = await folderList(CONFIG.premiumizeFolderId);
-            MANIFEST.catalogs = rootFolder.filter(f => f.type === "folder").map(folder => ({
+            const contents = await folderList(CONFIG.premiumizeFolderId);
+            MANIFEST.catalogs = contents.filter(item => item.type === "folder").map(item => ({
                 type: CONFIG.addonName,
-                id: `premiumize-${folder.name.toLowerCase()}`,
-                name: folder.name
+                id: `premiumize-${item.name.toLowerCase()}`,
+                name: item.name
             }));
-
             return createJsonResponse(MANIFEST);
         }
 
         // Catalogs
         const catalogMatch = REGEX_PATTERNS.Catalog.exec(url.pathname);
         if (catalogMatch) {
-            const catalogId = catalogMatch[1];
-            const rootFolder = await folderList(CONFIG.premiumizeFolderId);
-            const matchedFolder = rootFolder.find(f => `premiumize-${f.name.toLowerCase()}` === catalogId);
-
-            if (matchedFolder) {
-                const metas = await getCatalog(matchedFolder.id);
+            const id = catalogMatch[1];
+            const contents = await folderList(CONFIG.premiumizeFolderId);
+            const catalog = contents.find(item => `premiumize-${item.name.toLowerCase()}` === id);
+            if (catalog) {
+                const metas = await getMetas(catalog.id);
                 return createJsonResponse({ metas });
             }
         }
@@ -306,7 +299,7 @@ async function handleRequest(request) {
         if (metaMatch) {
             const id = metaMatch[2];
             const type = metaMatch[1];
-            const meta = await getMeta(type, id);
+            const meta = await getMeta(id, type);
             return createJsonResponse({ meta });
         }
 
@@ -314,7 +307,7 @@ async function handleRequest(request) {
         const streamMatch = REGEX_PATTERNS.Stream.exec(url.pathname);
         if (streamMatch) {
             const id = streamMatch[2];
-            const streams = await getStream(id);
+            const streams = await getStreams(id);
             return createJsonResponse({ streams });
         }
 
