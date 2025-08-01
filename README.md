@@ -9,8 +9,8 @@ The addon automatically organizes your content into Stremio catalogs:
 - **Series Catalog:** If a folder contains mostly subfolders, it is shown as a series catalog. Series episodes must be named with the format `SXXEXX` (for example, `S01E02`).
 
 You can also integrate your files with TMDB or AIOLists catalogs by naming your files or folders like this:
-- For movies: `NAME [IMDBID-TMDBID]`
-- For series episodes: `NAME SXXEXX [IMDBID-TMDBID]`
+- For movies: `NAME [IMDBID]`
+- For series episodes: `NAME SXXEXX [IMDBID]`
 
 Optionally, you can add an API key from [Rating Poster Database (RPDB)](https://ratingposterdb.com/) to show posters in your catalogs.
 
@@ -79,27 +79,30 @@ If you don't have one, go to [github.com](https://github.com/) and sign up for a
 ```
 Media
 ├── Movies
-│   └── How to train your dragon [tt26743210-1087192].mp4
+│   └── How to train your dragon [tt26743210].mp4
 │   └── Some Movie.mp4
 ├── Documentaries
 │   └── Some Documentary.mp4
 ├── Series
-│   └── Severance [tt11280740-95396]
-│       ├── Severance S01E01 [tt11280740-95396].mkv
-│       └── Severance S01E02 [tt11280740-95396].mkv
+│   └── Severance [tt11280740]
+│       ├── Severance S01E01.mkv
+│       └── Severance S01E02.mkv
 │   └── My Show
 │       ├── My Show S01E01.mp4
 │       └── My Show S01E02.mp4
 └── Anime
-    └── Kaguya-sama Love is War [tt9522300-83121]
-        ├── Kaguya-sama Love is War S01E01 [tt9522300-83121].mp4
-        ├── Kaguya-sama Love is War S01E02 [tt9522300-83121].mp4
+    └── Kaguya-sama Love is War [tt9522300]
+        ├── S01E01.mp4
+        └── S01E02.mp4
     └── Another Anime
-        ├── Another Anime S01E01.mp4
-        └── Another Anime
+        └── Season 1
+            ├── S01E01.mp4
+            └── S01E02.mp4
+        └── Season 2
+            ├── S02E01.mp4
+            └── S02E02.mp4
 ```
 
 **Tips:**
-- For best results and metadata, add the `[IMDBID-TMDBID]` format in your file and folder names.
 - Series episodes must include the `SXXEXX` pattern (e.g., `S01E02`) at the end of the filename.
-- Files and folders without IDs will only show on the Addon catalogs, and won't have posters or rich metadata.
+- Files and folders without IDs `[IMDBID]` will only show on the Addon catalogs, and won't have posters or metadata.

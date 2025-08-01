@@ -6,3 +6,6 @@ preview_urls = true
 compatibility_flags = [ "nodejs_compat" ]
 [observability.logs]
 enabled = true
+[[kv_namespaces]]
+binding = "KV"
+id = "f17afbb7db964d5cb890ab869c6660ee"
