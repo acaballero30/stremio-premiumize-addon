@@ -8,6 +8,7 @@ const CONFIG = {
     tmdbApiKey: "",
     tmdbConfig: ""
 };
+
 const MANIFEST = {
     id: "stremio.premiumize.worker",
     version: "1.0.0",
@@ -483,12 +484,12 @@ async function handleRequest(request) {
             MANIFEST.catalogs = await getCatalogs();
             return createJsonResponse(MANIFEST);
         }
-        if (path === "refresh/files.json") {
+        if (path === "/refresh/files.json") {
             KVStore.delete('files');
             const files = await listAll();
             return createJsonResponse(files);
         }
-        const refreshMetaMatch = path.match(/^refresh\/meta:(movie|series):([^\.]+)\.json$/);
+        const refreshMetaMatch = path.match(/^\/refresh\/meta:(movie|series):([^\.]+)\.json$/);
         if (refreshMetaMatch) {
             const id = refreshMetaMatch[2];
             const type = refreshMetaMatch[1];
