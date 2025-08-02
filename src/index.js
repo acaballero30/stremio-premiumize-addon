@@ -305,13 +305,17 @@ async function enrichMeta(meta, id) {
     ]);
     cinemeta = cinemeta.meta || {};
     tmdb = tmdb.meta || {};
-    const externalMeta = { ...cinemeta, ...tmdb };
+    const externalMeta = {
+        ...cinemeta, ...tmdb,
+        background: cinemeta.background || tmdb.background,
+        logo: cinemeta.logo || tmdb.logo
+        };
     const mergedMeta = { ...meta };
     if (externalMeta.name) {
         mergedMeta.name = externalMeta.name;
     }
     for (const [key, value] of Object.entries(externalMeta)) {
-        if (!["id", "type", "name", "videos"].includes(key) && !(key in mergedMeta)) {
+        if (!["id", "videos"].includes(key) && !(key in mergedMeta)) {
             mergedMeta[key] = value;
         }
     }
@@ -385,9 +389,9 @@ async function getMeta(id, type) {
             type
         };
         const imdb = extractImdbId(file.name);
-        meta = imdb
-            ? await enrichMeta(meta, imdb)
-            : meta
+        if (imdb) {
+            meta = await enrichMeta(meta, imdb);
+        }
     }
     if (type === "series") {
         const seriesFolder = await listFolder(id);
@@ -406,9 +410,9 @@ async function getMeta(id, type) {
             videos
         };
         const imdb = extractImdbId(seriesFolder.name);
-        meta = imdb
-            ? await enrichMeta(meta, imdb)
-            : meta
+        if (imdb) {
+            meta = await enrichMeta(meta, imdb);
+        }
     }
     return { meta };
 }
