@@ -472,10 +472,7 @@ async function getStreams(id, type) {
         }
     }
     if (!details.length) {
-        return [{
-            name: `⚠️ ${MANIFEST.name}`,
-            description: "[NOT FOUND]",
-        }];
+        return { streams: [] };
     }
     const streams = details.map(item => {
         const extensionMatch = item.name?.match(/\.(\w+)$/i);
@@ -531,7 +528,7 @@ function getMetaCached(id, type) {
 
 function getStreamsCached(id, type) {
     return getCached(`streams:${type}:${id}`, () => getStreams(id, type), 
-        data => Array.isArray(data.streams) && data.streams.some(s => s.url));
+        data => Array.isArray(data.streams) && data.streams.length > 0);
 }
 
 async function handleRequest(request) {
