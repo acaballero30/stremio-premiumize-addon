@@ -487,7 +487,10 @@ async function getStreams(id, type) {
             const parts = item.path.split("/");
             const seriesIndex = parts.findIndex(p => p.includes(id));
             if (seriesIndex >= 0 && parts.length > seriesIndex + 1) {
-                version = parts[seriesIndex + 1];
+                const language = parts[seriesIndex + 1];
+                if (/^(Subtitulado|Latino|Japones|Castellano|Español|Ingl[eé]s)$/i.test(language)) {
+                    version = language;
+                }
             }
         }
         return {
