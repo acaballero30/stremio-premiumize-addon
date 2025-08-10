@@ -475,7 +475,6 @@ async function getStreams(id, type) {
         return [{
             name: `⚠️ ${MANIFEST.name}`,
             description: "[NOT FOUND]",
-            externalUrl: "",
         }];
     }
     const streams = details.map(item => {
@@ -502,11 +501,13 @@ async function getStreams(id, type) {
     return { streams };
 }
 
-async function getCached(key, fetchFn) {
+async function getCached(key, fetchFn, shouldCache = () => true) {
     let cached = await KVStore.get(key, { type: 'json' });
     if (!cached || (typeof cached === 'object' && Object.keys(cached).length === 0)) {
         const data = await fetchFn();
-        await KVStore.put(key, JSON.stringify(data));
+        if (shouldCache(data)) {
+            await KVStore.put(key, JSON.stringify(data));
+        }
         return data;
     }
     return cached;
@@ -529,7 +530,8 @@ function getMetaCached(id, type) {
 }
 
 function getStreamsCached(id, type) {
-    return getCached(`streams:${type}:${id}`, () => getStreams(id, type));
+    return getCached(`streams:${type}:${id}`, () => getStreams(id, type), 
+        data => Array.isArray(data.streams) && data.streams.some(s => s.url));
 }
 
 async function handleRequest(request) {
