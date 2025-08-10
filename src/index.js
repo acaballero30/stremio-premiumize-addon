@@ -286,7 +286,7 @@ async function listFolder(id) {
 
 async function listAll() {
     const url = `https://www.premiumize.me/api/item/listall?apikey=${CONFIG.premiumizeApiKey}`;
-    files = await fetchUrl(url);
+    return await fetchUrl(url);
 }
 
 async function listVideos(path) {
