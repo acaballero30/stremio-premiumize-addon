@@ -185,7 +185,14 @@ function extractImdbId(filename) {
     return match ? match[1] : null;
 }
 
-function organizeEpisodes(files) {
+function chooseValue(primary, fallback) {
+    if (primary === undefined || primary === null || primary === "") {
+        return fallback;
+    }
+    return primary;
+}
+
+function organizeEpisodes(files, id) {
     const patterns = [
         /S(\d{1,2})E(\d{1,2})/i,
         /(\d{1,2})x(\d{1,2})/i
@@ -211,13 +218,16 @@ function organizeEpisodes(files) {
         if (!videos[season]) {
             videos[season] = [];
         }
-        videos[season].push({
-            id: `premiumize:${file.id}`,
-            name: cleanFileName(file.name),
-            season,
-            episode,
-            number: episode,
-        });
+        const episodeId = id.startsWith("tt") ? `${id}:${season}:${episode}` : `premiumize:${file.id}`;
+        if (!id.startsWith("tt") || !videos[season].some(v => v.id === episodeId)) {
+            videos[season].push({
+                id: episodeId,
+                name: cleanFileName(file.name),
+                season,
+                episode,
+                number: episode,
+            });
+        }
     }
     return videos;
 }
@@ -275,18 +285,12 @@ async function listFolder(id) {
 }
 
 async function listAll() {
-    let files = await KVStore.get('files', { type: 'json' });
-    if (!files || (typeof files === 'object' && Object.keys(files).length === 0)) {
-        const url = `https://www.premiumize.me/api/item/listall?apikey=${CONFIG.premiumizeApiKey}`;
-        files = await fetchUrl(url);
-        await KVStore.put('files', JSON.stringify(files));
-        return files;
-    }
-    return files;
+    const url = `https://www.premiumize.me/api/item/listall?apikey=${CONFIG.premiumizeApiKey}`;
+    files = await fetchUrl(url);
 }
 
 async function listVideos(path) {
-    const allItems = await listAll();
+    const allItems = await getFilesCached();
     return allItems.files.filter(file => 
         file.mime_type?.startsWith("video") &&
         file.path?.includes(`${path}/`)
@@ -294,7 +298,7 @@ async function listVideos(path) {
 }
 
 async function searchFiles(query) {
-    const allItems = await listAll();
+    const allItems = await getFilesCached();
     return allItems.files.filter(file => query.test(file.path) && file.mime_type?.startsWith("video"));
 }
 
@@ -305,11 +309,15 @@ async function enrichMeta(meta, id) {
     ]);
     cinemeta = cinemeta.meta || {};
     tmdb = tmdb.meta || {};
-    const externalMeta = {
-        ...cinemeta, ...tmdb,
-        background: cinemeta.background || tmdb.background,
-        logo: cinemeta.logo || tmdb.logo
-        };
+    const allKeys = new Set([...Object.keys(cinemeta), ...Object.keys(tmdb)]);
+    const externalMeta = {};
+    for (const key of allKeys) {
+        if (key === "background" || key === "logo") {
+            externalMeta[key] = chooseValue(cinemeta[key], tmdb[key]);
+        } else {
+            externalMeta[key] = chooseValue(tmdb[key], cinemeta[key]);
+        }
+    }
     const mergedMeta = { ...meta };
     if (externalMeta.name) {
         mergedMeta.name = externalMeta.name;
@@ -324,14 +332,21 @@ async function enrichMeta(meta, id) {
             if (video.season === 0) {
                 return video;
             }
-            const match = (tmdb.videos || [])
-                .concat(cinemeta.videos || [])
-                .find((v) => v.season === video.season && v.episode === video.episode);
-            if (match) {
-                const { id, ...rest } = video;
-                return { ...rest, ...match, id };
-            }
-            return video;
+        const tmdbMatch = (tmdb.videos || []).find(
+            v => v.season === video.season && v.episode === video.episode
+        );
+        const cinemetaMatch = (cinemeta.videos || []).find(
+            v => v.season === video.season && v.episode === video.episode
+        );
+        const allKeys = new Set([
+            ...Object.keys(cinemetaMatch || {}),
+            ...Object.keys(tmdbMatch || {})
+        ]);
+        const mergedVideo = {};
+        for (const key of allKeys) {
+            mergedVideo[key] = chooseValue(tmdbMatch?.[key], cinemetaMatch?.[key]);
+        }
+        return { ...video, ...mergedVideo, id: video.id };
         });
     }
     return mergedMeta;
@@ -399,7 +414,8 @@ async function getMeta(id, type) {
         const files = hasSubfolders 
             ? await listVideos(seriesFolder.name)
             : seriesFolder.content.filter(file => file.mime_type?.startsWith("video"));
-        const episodes = organizeEpisodes(files);
+        const imdb = extractImdbId(seriesFolder.name);
+        const episodes = organizeEpisodes(files, imdb || id);
         const videos = Object.values(episodes)
             .flat()
             .sort((a, b) => a.season - b.season || a.episode - b.episode)
@@ -409,7 +425,6 @@ async function getMeta(id, type) {
             type,
             videos
         };
-        const imdb = extractImdbId(seriesFolder.name);
         if (imdb) {
             meta = await enrichMeta(meta, imdb);
         }
@@ -417,29 +432,23 @@ async function getMeta(id, type) {
     return { meta };
 }
 
-async function getMetaCached(id, type) {
-    const key = `meta:${type}:${id}`;
-    let cached = await KVStore.get(key, { type: 'json' });
-    if (cached) {
-        return cached;
-    }
-    const meta = await getMeta(id, type);
-    await KVStore.put(key, JSON.stringify(meta));
-    return meta;
-}
-
 function mergeMeta(item, metaWrapper) {
-    if (!metaWrapper || !metaWrapper.meta) return item;
+    if (!metaWrapper || !metaWrapper.meta) {
+        return item;
+    }
     const meta = metaWrapper.meta;
     const { id, type, poster, videos, ...rest } = meta;
     return { ...rest, ...item };
 }
 
 async function getStreams(id, type) {
-    let details = null;
+    let details = [];
     if (id.startsWith("premiumize:")) {
         id = id.split(":")[1];
-        details = await getItem(id);
+        item = await getItem(id);
+        if (item) {
+            details = [item];
+        }
     }
     else {
         const idParts = id.split(":");
@@ -453,28 +462,71 @@ async function getStreams(id, type) {
         } else {
             query = new RegExp(id, 'i');
         }
-        const fileMatch = await searchFiles(query);
-        if (fileMatch.length > 0) {
-            details = await getItem(fileMatch[0].id);
+        const fileMatches = await searchFiles(query);
+        if (fileMatches.length > 0) {
+            const files = fileMatches.map(async match => {
+                const item = await getItem(match.id);
+                return { ...item, path: match.path };
+            });
+            details = await Promise.all(files);
         }
     }
-    if (!details) {
+    if (!details.length) {
         return [{
             name: `⚠️ ${MANIFEST.name}`,
             description: "[NOT FOUND]",
             externalUrl: "",
         }];
     }
-    const extensionMatch = details.name && details.name.match(/\.(\w+)$/i);
-    const extension = extensionMatch ? extensionMatch[1].toUpperCase() : "";
-    const size = details.size ? formatSize(details.size) : "";
-    return {
-        streams: [{
+    const streams = details.map(item => {
+        const extensionMatch = item.name?.match(/\.(\w+)$/i);
+        const extension = extensionMatch ? extensionMatch[1].toUpperCase() : "";
+        const size = item.size ? formatSize(item.size) : "";
+        let version = "";
+        if (item.path) {
+            const parts = item.path.split("/");
+            const seriesIndex = parts.findIndex(p => p.includes(id));
+            if (seriesIndex >= 0 && parts.length > seriesIndex + 1) {
+                version = parts[seriesIndex + 1];
+            }
+        }
+        return {
             name: MANIFEST.name,
-            title: `▶️ PLAY [${extension}|${size}]`,
-            url: details.stream_link || details.link || details.directlink,
-        }]
-    };
+            title: `▶️ PLAY${version ? ` - ${version}` : ""} [${extension}|${size}]`,
+            url: item.stream_link || item.link || item.directlink,
+        };
+    });
+    return { streams };
+}
+
+async function getCached(key, fetchFn) {
+    let cached = await KVStore.get(key, { type: 'json' });
+    if (!cached || (typeof cached === 'object' && Object.keys(cached).length === 0)) {
+        const data = await fetchFn();
+        await KVStore.put(key, JSON.stringify(data));
+        return data;
+    }
+    return cached;
+}
+
+function getFilesCached() {
+    return getCached("files", () => listAll());
+}
+
+function getCatalogsCached() {
+    return getCached("catalogs", () => getCatalogs());
+}
+
+function getCatalogCached(id) {
+    return getCached(`catalog:${id}`, () => getCatalog(id));
+}
+
+function getMetaCached(id, type) {
+    return getCached(`meta:${type}:${id}`, () => getMeta(id, type));
+}
+
+function getStreamsCached(id, type) {
+    return getCached(`streams:${type}:${id}`, () => getStreams(id, type));
 }
 
 async function handleRequest(request) {
@@ -485,26 +537,13 @@ async function handleRequest(request) {
             return Response.redirect(url.origin + "/manifest.json", 301);
         }
         if (path === "/manifest.json") {
-            MANIFEST.catalogs = await getCatalogs();
+            MANIFEST.catalogs = await getCatalogsCached();
             return createJsonResponse(MANIFEST);
-        }
-        if (path === "/refresh/files.json") {
-            KVStore.delete('files');
-            const files = await listAll();
-            return createJsonResponse(files);
-        }
-        const refreshMetaMatch = path.match(/^\/refresh\/meta:(movie|series):([^\.]+)\.json$/);
-        if (refreshMetaMatch) {
-            const id = refreshMetaMatch[2];
-            const type = refreshMetaMatch[1];
-            KVStore.delete(`meta:${type}:${id}`);
-            const meta = await getMetaCached(id, type);
-            return createJsonResponse(meta);
         }
         const catalogMatch = path.match(`^/catalog/${CONFIG.addonName}/premiumize:([\\w-]+)\\.json$`);
         if (catalogMatch) {
             const id = catalogMatch[1];
-            const catalog = await getCatalog(id);
+            const catalog = await getCatalogCached(id);
             return createJsonResponse(catalog);
         }
         const metaMatch = path.match(/^\/meta\/(movie|series)\/premiumize:([^\.]+)\.json$/);
@@ -518,8 +557,33 @@ async function handleRequest(request) {
         if (streamMatch) {
             const id = streamMatch[2];
             const type = streamMatch[1];
-            const streams = await getStreams(id, type);
+            const streams = await getStreamsCached(id, type);
             return createJsonResponse(streams);
+        }
+        if (path === "/delete/files.json") {
+            KVStore.delete('files');
+            const files = await getFilesCached();
+            return createJsonResponse(files);
+        }
+        if (path === "/delete/manifest.json") {
+            KVStore.delete('catalogs');
+            MANIFEST.catalogs = await getCatalogsCached();
+            return createJsonResponse(MANIFEST);
+        }
+        if (path === "/delete/catalogs.json") {
+            const list = await KVStore.list({ prefix: "catalog:" });
+            await Promise.all(list.keys.map(k => KVStore.delete(k.name)));
+            return createJsonResponse({ status: "ok", deleted: list.keys.length });
+        }
+        if (path === "/delete/metas.json") {
+            const list = await KVStore.list({ prefix: "meta:" });
+            await Promise.all(list.keys.map(k => KVStore.delete(k.name)));
+            return createJsonResponse({ status: "ok", deleted: list.keys.length });
+        }
+        if (path === "/delete/streams.json") {
+            const list = await KVStore.list({ prefix: "streams:" });
+            await Promise.all(list.keys.map(k => KVStore.delete(k.name)));
+            return createJsonResponse({ status: "ok", deleted: list.keys.length });
         }
         return new Response("Not Found", { status: 404 });
     }
