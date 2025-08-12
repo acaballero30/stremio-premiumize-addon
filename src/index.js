@@ -456,11 +456,15 @@ async function getStreams(id, type) {
         id = isIMDb ? idParts[0] : idParts[1];
         let query = id;
         if (type === "series") {
-            const season = idParts[isIMDb ? 1 : 2].padStart(2, '0');
-            const episode = idParts[isIMDb ? 2 : 3].padStart(2, '0');
-            query = new RegExp(`${id}.*S${season}E${episode}`, 'i');
+            const seasonNum = parseInt(idParts[isIMDb ? 1 : 2], 10);
+            const episodeNum = parseInt(idParts[isIMDb ? 2 : 3], 10);
+            const patterns = [
+                `${id}.*S0?${seasonNum}E0?${episodeNum}`,
+                `${id}.*${seasonNum}x0?${episodeNum}`,
+            ];
+            query = new RegExp(patterns.join("|"), "i");
         } else {
-            query = new RegExp(id, 'i');
+            query = new RegExp(id, "i");
         }
         const fileMatches = await searchFiles(query);
         if (fileMatches.length > 0) {
