@@ -194,8 +194,8 @@ function chooseValue(primary, fallback) {
 
 function organizeEpisodes(files, id) {
     const patterns = [
-        /S(\d{1,2})E(\d{1,2})/i,
-        /(\d{1,2})x(\d{1,2})/i
+        /S(\d{1,2})E(\d{1,2})(?!\d)/i,
+        /(\d{1,2})x(\d{1,2})(?!\d)/i
     ];
     const videos = {};
     for (const file of files) {
@@ -459,8 +459,8 @@ async function getStreams(id, type) {
             const seasonNum = parseInt(idParts[isIMDb ? 1 : 2], 10);
             const episodeNum = parseInt(idParts[isIMDb ? 2 : 3], 10);
             const patterns = [
-                `${id}.*S0?${seasonNum}E0?${episodeNum}`,
-                `${id}.*${seasonNum}x0?${episodeNum}`,
+                `${id}.*S0?${seasonNum}E0?${episodeNum}(?!\\d)`,
+                `${id}.*${seasonNum}x0?${episodeNum}(?!\\d)`,
             ];
             query = new RegExp(patterns.join("|"), "i");
         } else {
