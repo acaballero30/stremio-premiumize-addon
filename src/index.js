@@ -563,7 +563,7 @@ async function handleRequest(request) {
         if (streamMatch) {
             const id = streamMatch[2];
             const type = streamMatch[1];
-            const streams = await getStreamsCached(id, type);
+            const streams = await getStreams(id, type);
             return createJsonResponse(streams);
         }
         if (path === "/delete/files.json") {
