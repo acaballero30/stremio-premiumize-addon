@@ -502,12 +502,12 @@ async function getStreams(id, type) {
     return { streams };
 }
 
-async function getCached(key, fetchFn, shouldCache = () => true) {
+async function getCached(key, fetchFn, expirationTtl = null, shouldCache = () => true) {
     let cached = await KVStore.get(key, { type: 'json' });
     if (!cached || (typeof cached === 'object' && Object.keys(cached).length === 0)) {
         const data = await fetchFn();
         if (shouldCache(data)) {
-            await KVStore.put(key, JSON.stringify(data));
+            await KVStore.put(key, JSON.stringify(data), expirationTtl ? { expirationTtl } : {});
         }
         return data;
     }
@@ -531,7 +531,7 @@ function getMetaCached(id, type) {
 }
 
 function getStreamsCached(id, type) {
-    return getCached(`streams:${type}:${id}`, () => getStreams(id, type), 
+    return getCached(`streams:${type}:${id}`, () => getStreams(id, type), 7200,
         data => Array.isArray(data.streams) && data.streams.length > 0);
 }
 
@@ -563,7 +563,7 @@ async function handleRequest(request) {
         if (streamMatch) {
             const id = streamMatch[2];
             const type = streamMatch[1];
-            const streams = await getStreams(id, type);
+            const streams = await getStreamsCached(id, type);
             return createJsonResponse(streams);
         }
         if (path === "/delete/files.json") {
